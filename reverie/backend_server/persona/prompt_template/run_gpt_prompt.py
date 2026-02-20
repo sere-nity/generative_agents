@@ -361,25 +361,46 @@ def run_gpt_prompt_task_decomp(persona,
     print (gpt_response)
     print ("-==- -==- -==- ")
 
-    # TODO SOMETHING HERE sometimes fails... See screenshot
+    # Parse total duration from prompt; default 1440 if missing
+    try:
+      total_expected_min = int(prompt.split("(total duration in minutes")[-1]
+                                     .split("):")[0].strip())
+    except (IndexError, ValueError):
+      total_expected_min = 1440
+
+    # Skip malformed or API error responses
+    if not gpt_response or "TOKEN LIMIT EXCEEDED" in gpt_response:
+      return [["asleep", total_expected_min]]
+
     temp = [i.strip() for i in gpt_response.split("\n")]
     _cr = []
     cr = []
-    for count, i in enumerate(temp): 
-      if count != 0: 
-        _cr += [" ".join([j.strip () for j in i.split(" ")][3:])]
-      else: 
+    for count, i in enumerate(temp):
+      if count != 0:
+        parts = [j.strip() for j in i.split(" ")]
+        if len(parts) >= 4:
+          _cr += [" ".join(parts[3:])]
+        else:
+          _cr += [i]
+      else:
         _cr += [i]
-    for count, i in enumerate(_cr): 
+    for count, i in enumerate(_cr):
+      if "(duration in minutes:" not in i:
+        continue
       k = [j.strip() for j in i.split("(duration in minutes:")]
+      if len(k) < 2:
+        continue
       task = k[0]
-      if task[-1] == ".": 
+      if task.endswith("."):
         task = task[:-1]
-      duration = int(k[1].split(",")[0].strip())
+      try:
+        duration = int(k[1].split(",")[0].strip())
+      except (ValueError, IndexError):
+        continue
       cr += [[task, duration]]
 
-    total_expected_min = int(prompt.split("(total duration in minutes")[-1]
-                                   .split("):")[0].strip())
+    if not cr:
+      return [["asleep", total_expected_min]]
     
     # TODO -- now, you need to make sure that this is the same as the sum of 
     #         the current action sequence. 
@@ -413,18 +434,18 @@ def run_gpt_prompt_task_decomp(persona,
 
     return cr
 
-  def __func_validate(gpt_response, prompt=""): 
-    # TODO -- this sometimes generates error 
-    try: 
+  def __func_validate(gpt_response, prompt=""):
+    if not gpt_response or "TOKEN LIMIT EXCEEDED" in gpt_response:
+      return False
+    try:
       __func_clean_up(gpt_response)
-    except: 
-      pass
-      # return False
-    return gpt_response
+      return gpt_response
+    except Exception:
+      return False
 
-  def get_fail_safe(): 
-    fs = ["asleep"]
-    return fs
+  def get_fail_safe():
+    # Must be list of [task, duration] pairs for downstream loop
+    return [["asleep", 1440]]
 
   gpt_param = {"engine": "text-davinci-003", "max_tokens": 1000, 
              "temperature": 0, "top_p": 1, "stream": False,
@@ -1012,8 +1033,10 @@ def run_gpt_prompt_act_obj_desc(act_game_object, act_desp, persona, verbose=Fals
   fail_safe = get_fail_safe(act_game_object) ########
   output = ChatGPT_safe_generate_response(prompt, example_output, special_instruction, 3, fail_safe,
                                           __chat_func_validate, __chat_func_clean_up, True)
-  if output != False: 
+  if output is not False and output is not None:
     return output, [output, prompt, gpt_param, prompt_input, fail_safe]
+  # When API fails, return fail_safe so caller never gets None
+  return fail_safe, [fail_safe, prompt, gpt_param, prompt_input, fail_safe]
   # ChatGPT Plugin ===========================================================
 
 

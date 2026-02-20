@@ -98,13 +98,20 @@ class MemoryTree:
     """
     curr_world, curr_sector, curr_arena = arena.split(":")
 
-    if not curr_arena: 
+    if not curr_arena:
       return ""
 
-    try: 
-      x = ", ".join(list(self.tree[curr_world][curr_sector][curr_arena]))
-    except: 
-      x = ", ".join(list(self.tree[curr_world][curr_sector][curr_arena.lower()]))
+    sector_arenas = self.tree.get(curr_world, {}).get(curr_sector, {})
+    # Model may return an arena that doesn't exist in this sector (e.g. "kitchen" when only "main room" exists)
+    if curr_arena in sector_arenas:
+      arena_key = curr_arena
+    elif curr_arena.lower() in sector_arenas:
+      arena_key = curr_arena.lower()
+    elif sector_arenas:
+      arena_key = next(iter(sector_arenas))
+    else:
+      return ""
+    x = ", ".join(list(sector_arenas[arena_key]))
     return x
 
 

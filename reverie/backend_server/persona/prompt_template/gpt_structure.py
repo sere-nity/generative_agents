@@ -7,11 +7,14 @@ Description: Wrapper functions for calling OpenAI APIs.
 import json
 import random
 import openai
-import time 
+import time
 
+from openai import OpenAI
 from utils import *
 
 openai.api_key = openai_api_key
+_embedding_client = OpenAI(api_key=openai_api_key)
+_completion_client = OpenAI(api_key=openai_api_key)
 
 def temp_sleep(seconds=0.1):
   time.sleep(seconds)
@@ -44,15 +47,15 @@ def GPT4_request(prompt):
   """
   temp_sleep()
 
-  try: 
-    completion = openai.ChatCompletion.create(
-    model="gpt-4", 
-    messages=[{"role": "user", "content": prompt}]
+  try:
+    response = _embedding_client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
     )
-    return completion["choices"][0]["message"]["content"]
+    return response.choices[0].message.content
   
-  except: 
-    print ("ChatGPT ERROR")
+  except Exception as e:
+    print("ChatGPT ERROR:", getattr(e, "message", str(e)))
     return "ChatGPT ERROR"
 
 
@@ -68,16 +71,15 @@ def ChatGPT_request(prompt):
   RETURNS: 
     a str of GPT-3's response. 
   """
-  # temp_sleep()
-  try: 
-    completion = openai.ChatCompletion.create(
-    model="gpt-3.5-turbo", 
-    messages=[{"role": "user", "content": prompt}]
+  try:
+    response = _embedding_client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}]
     )
-    return completion["choices"][0]["message"]["content"]
+    return response.choices[0].message.content
   
-  except: 
-    print ("ChatGPT ERROR")
+  except Exception as e:
+    print("ChatGPT ERROR:", getattr(e, "message", str(e)))
     return "ChatGPT ERROR"
 
 
@@ -207,20 +209,29 @@ def GPT_request(prompt, gpt_parameter):
     a str of GPT-3's response. 
   """
   temp_sleep()
-  try: 
-    response = openai.Completion.create(
-                model=gpt_parameter["engine"],
-                prompt=prompt,
-                temperature=gpt_parameter["temperature"],
-                max_tokens=gpt_parameter["max_tokens"],
-                top_p=gpt_parameter["top_p"],
-                frequency_penalty=gpt_parameter["frequency_penalty"],
-                presence_penalty=gpt_parameter["presence_penalty"],
-                stream=gpt_parameter["stream"],
-                stop=gpt_parameter["stop"],)
+  try:
+    # Map deprecated completion models to current equivalent
+    engine = gpt_parameter["engine"]
+    if engine in ("text-davinci-003", "text-davinci-002"):
+      engine = "gpt-3.5-turbo-instruct"
+    # OpenAI Python >= 1.0: use client.completions.create (model=, not engine=)
+    kwargs = dict(
+        model=engine,
+        prompt=prompt,
+        temperature=gpt_parameter["temperature"],
+        max_tokens=gpt_parameter["max_tokens"],
+        top_p=gpt_parameter["top_p"],
+        frequency_penalty=gpt_parameter["frequency_penalty"],
+        presence_penalty=gpt_parameter["presence_penalty"],
+        stream=gpt_parameter["stream"],
+    )
+    if gpt_parameter.get("stop") is not None:
+      kwargs["stop"] = gpt_parameter["stop"]
+    response = _completion_client.completions.create(**kwargs)
     return response.choices[0].text
-  except: 
-    print ("TOKEN LIMIT EXCEEDED")
+  except Exception as e:
+    err_msg = str(getattr(e, "message", str(e)))
+    print(f"GPT_request error: {type(e).__name__}: {err_msg}")
     return "TOKEN LIMIT EXCEEDED"
 
 
@@ -275,10 +286,10 @@ def safe_generate_response(prompt,
 
 def get_embedding(text, model="text-embedding-ada-002"):
   text = text.replace("\n", " ")
-  if not text: 
+  if not text:
     text = "this is blank"
-  return openai.Embedding.create(
-          input=[text], model=model)['data'][0]['embedding']
+  response = _embedding_client.embeddings.create(input=[text], model=model)
+  return response.data[0].embedding
 
 
 if __name__ == '__main__':

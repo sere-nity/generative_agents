@@ -45,7 +45,7 @@ class ReverieServer:
                sim_code):
     # FORKING FROM A PRIOR SIMULATION:
     # <fork_sim_code> indicates the simulation we are forking from. 
-    # Interestingly, all simulations must be forked from some initial 
+    # TODO - why ??? Interestingly, all simulations must be forked from some initial 
     # simulation, where the first simulation is "hand-crafted".
     self.fork_sim_code = fork_sim_code
     fork_folder = f"{fs_storage}/{self.fork_sim_code}"
@@ -304,6 +304,14 @@ class ReverieServer:
 
     # The main while loop of Reverie. 
     while (True): 
+      # Recreate curr_step.json if it doesn't exist (frontend may have deleted it)
+      f_curr_step = f"{fs_temp_storage}/curr_step.json"
+      if not check_if_file_exists(f_curr_step):
+        curr_step = dict()
+        curr_step["step"] = self.step
+        with open(f_curr_step, "w") as outfile: 
+          outfile.write(json.dumps(curr_step, indent=2))
+      
       # Done with this iteration if <int_counter> reaches 0. 
       if int_counter == 0: 
         break
@@ -398,6 +406,8 @@ class ReverieServer:
           #  "persona": {"Klaus Mueller": {"movement": [38, 12]}}, 
           #  "meta": {curr_time: <datetime>}}
           curr_move_file = f"{sim_folder}/movement/{self.step}.json"
+          # Ensure the movement directory exists
+          os.makedirs(os.path.dirname(curr_move_file), exist_ok=True)
           with open(curr_move_file, "w") as outfile: 
             outfile.write(json.dumps(movements, indent=2))
 
@@ -430,7 +440,13 @@ class ReverieServer:
     # <sim_folder> points to the current simulation folder.
     sim_folder = f"{fs_storage}/{self.sim_code}"
 
-    while True: 
+    while True:
+      # Recreate curr_sim_code.json and curr_step.json so the frontend can load simulator_home
+      # (frontend deletes curr_step.json when you open the page, so we restore it each loop)
+      with open(f"{fs_temp_storage}/curr_sim_code.json", "w") as outfile:
+        outfile.write(json.dumps({"sim_code": self.sim_code}, indent=2))
+      with open(f"{fs_temp_storage}/curr_step.json", "w") as outfile:
+        outfile.write(json.dumps({"step": self.step}, indent=2))
       sim_command = input("Enter option: ")
       sim_command = sim_command.strip()
       ret_str = ""
