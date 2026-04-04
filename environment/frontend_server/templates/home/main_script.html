@@ -29,8 +29,9 @@
 
 	// <step> -- one full loop around all three phases determined by <phase> is 
 	// a step. We use this to link the steps in the backend. 
-	let step = parseInt(document.getElementById('step').innerHTML);
 	let sim_code = document.getElementById('sim_code').innerHTML;
+	let _savedStep = parseInt(localStorage.getItem('step__' + sim_code));
+	let step = (!isNaN(_savedStep) && _savedStep > 0) ? _savedStep : parseInt(document.getElementById('step').innerHTML);
 	// let persona_names = document.getElementById('persona_name_list').innerHTML.split(",");
 
 	let spans = document.getElementById('persona_init_pos').getElementsByTagName('span');
@@ -515,6 +516,7 @@
 	        phase = "process";
 	        execute_count = execute_count_max + 1;
 	        step = step + 1;
+        localStorage.setItem('step__' + sim_code, step);
 	      }
 	    }
 
