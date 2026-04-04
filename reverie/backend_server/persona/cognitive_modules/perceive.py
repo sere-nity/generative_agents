@@ -16,11 +16,12 @@ def generate_poig_score(persona, event_type, description):
   if "is idle" in description: 
     return 1
 
-  if event_type == "event": 
-    return run_gpt_prompt_event_poignancy(persona, description)[0]
-  elif event_type == "chat": 
-    return run_gpt_prompt_chat_poignancy(persona, 
-                           persona.scratch.act_description)[0]
+  if event_type == "event":
+    result = run_gpt_prompt_event_poignancy(persona, description)
+    return result[0] if result is not None else 1
+  elif event_type == "chat":
+    result = run_gpt_prompt_chat_poignancy(persona, persona.scratch.act_description)
+    return result[0] if result is not None else 1
 
 def perceive(persona, maze): 
   """

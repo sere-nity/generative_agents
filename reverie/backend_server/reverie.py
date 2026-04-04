@@ -18,6 +18,9 @@ term "personas" to refer to generative agents, "associative memory" to refer
 to the memory stream, and "reverie" to refer to the overarching simulation 
 framework.
 """
+import sys
+sys.stdout.reconfigure(line_buffering=True)
+
 import json
 import numpy
 import datetime
@@ -34,6 +37,7 @@ from global_methods import *
 from utils import *
 from maze import *
 from persona.persona import *
+from persona.prompt_template.gpt_structure import get_token_summary, save_token_log
 
 ##############################################################################
 #                                  REVERIE                                   #
@@ -376,21 +380,19 @@ class ReverieServer:
           # move. The movement for each of the personas comes in the form of
           # x y coordinates where the persona will move towards. e.g., (50, 34)
           # This is where the core brains of the personas are invoked. 
-          movements = {"persona": dict(), 
+          movements = {"persona": dict(),
                        "meta": dict()}
-          for persona_name, persona in self.personas.items(): 
-            # <next_tile> is a x,y coordinate. e.g., (58, 9)
-            # <pronunciatio> is an emoji. e.g., "\ud83d\udca4"
-            # <description> is a string description of the movement. e.g., 
-            #   writing her next novel (editing her novel) 
-            #   @ double studio:double studio:common room:sofa
+          for persona_name, persona in self.personas.items():
+            print(f"[MOVE] step={self.step} persona={persona_name}", flush=True)
             next_tile, pronunciatio, description = persona.move(
-              self.maze, self.personas, self.personas_tile[persona_name], 
+              self.maze, self.personas, self.personas_tile[persona_name],
               self.curr_time)
             movements["persona"][persona_name] = {}
             movements["persona"][persona_name]["movement"] = next_tile
             movements["persona"][persona_name]["pronunciatio"] = pronunciatio
             movements["persona"][persona_name]["description"] = description
+            movements["persona"][persona_name]["act_description"] = (persona
+                                                          .scratch.act_description)
             movements["persona"][persona_name]["chat"] = (persona
                                                           .scratch.chat)
 
@@ -411,14 +413,18 @@ class ReverieServer:
           with open(curr_move_file, "w") as outfile: 
             outfile.write(json.dumps(movements, indent=2))
 
-          # After this cycle, the world takes one step forward, and the 
-          # current time moves by <sec_per_step> amount. 
+          # After this cycle, the world takes one step forward, and the
+          # current time moves by <sec_per_step> amount.
           self.step += 1
           self.curr_time += datetime.timedelta(seconds=self.sec_per_step)
 
           int_counter -= 1
-          
-      # Sleep so we don't burn our machines. 
+
+          # Save token log every 100 steps so usage is visible in real time.
+          if self.step % 100 == 0:
+            save_token_log(f"{fs_storage}/{self.sim_code}/token_log.json")
+
+      # Sleep so we don't burn our machines.
       time.sleep(self.server_sleep)
 
 
@@ -452,10 +458,12 @@ class ReverieServer:
       ret_str = ""
 
       try: 
-        if sim_command.lower() in ["f", "fin", "finish", "save and finish"]: 
-          # Finishes the simulation environment and saves the progress. 
+        if sim_command.lower() in ["f", "fin", "finish", "save and finish"]:
+          # Finishes the simulation environment and saves the progress.
           # Example: fin
           self.save()
+          get_token_summary()
+          save_token_log(f"{fs_storage}/{self.sim_code}/token_log.json")
           break
 
         elif sim_command.lower() == "start path tester mode": 
@@ -477,11 +485,13 @@ class ReverieServer:
           # Example: save
           self.save()
 
-        elif sim_command[:3].lower() == "run": 
+        elif sim_command[:3].lower() == "run":
           # Runs the number of steps specified in the prompt.
           # Example: run 1000
           int_count = int(sim_command.split()[-1])
           rs.start_server(int_count)
+          get_token_summary()
+          save_token_log(f"{fs_storage}/{rs.sim_code}/token_log.json")
 
         elif ("print persona schedule" 
               in sim_command[:22].lower()): 

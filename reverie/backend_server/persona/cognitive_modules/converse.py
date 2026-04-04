@@ -187,8 +187,8 @@ def generate_summarize_ideas(persona, nodes, question):
   statements = ""
   for n in nodes:
     statements += f"{n.embedding_key}\n"
-  summarized_idea = run_gpt_prompt_summarize_ideas(persona, statements, question)[0]
-  return summarized_idea
+  result = run_gpt_prompt_summarize_ideas(persona, statements, question)
+  return result[0] if result is not None else ""
 
 
 def generate_next_line(persona, interlocutor_desc, curr_convo, summarized_idea):
@@ -197,16 +197,16 @@ def generate_next_line(persona, interlocutor_desc, curr_convo, summarized_idea):
   for row in curr_convo: 
     prev_convo += f'{row[0]}: {row[1]}\n'
 
-  next_line = run_gpt_prompt_generate_next_convo_line(persona, 
-                                                      interlocutor_desc, 
-                                                      prev_convo, 
-                                                      summarized_idea)[0]  
-  return next_line
+  result = run_gpt_prompt_generate_next_convo_line(persona,
+                                                    interlocutor_desc,
+                                                    prev_convo,
+                                                    summarized_idea)
+  return result[0] if result is not None else ""
 
 
 def generate_inner_thought(persona, whisper):
-  inner_thought = run_gpt_prompt_generate_whisper_inner_thought(persona, whisper)[0]
-  return inner_thought
+  result = run_gpt_prompt_generate_whisper_inner_thought(persona, whisper)
+  return result[0] if result is not None else ""
 
 def generate_action_event_triple(act_desp, persona): 
   """TODO 

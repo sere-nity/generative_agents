@@ -35,7 +35,8 @@ def generate_wake_up_hour(persona):
     8
   """
   if debug: print ("GNS FUNCTION: <generate_wake_up_hour>")
-  return int(run_gpt_prompt_wake_up_hour(persona)[0])
+  result = run_gpt_prompt_wake_up_hour(persona)
+  return int(result[0]) if result is not None else 8
 
 
 def generate_first_daily_plan(persona, wake_up_hour): 
@@ -65,7 +66,8 @@ def generate_first_daily_plan(persona, wake_up_hour):
      'have dinner at 6:00 pm', 'watch TV from 7:00 pm to 8:00 pm']
   """
   if debug: print ("GNS FUNCTION: <generate_first_daily_plan>")
-  return run_gpt_prompt_daily_plan(persona, wake_up_hour)[0]
+  result = run_gpt_prompt_daily_plan(persona, wake_up_hour)
+  return result[0] if result is not None else []
 
 
 def generate_hourly_schedule(persona, wake_up_hour): 
@@ -105,8 +107,9 @@ def generate_hourly_schedule(persona, wake_up_hour):
           n_m1_activity += ["sleeping"]
           wake_up_hour -= 1
         else: 
-          n_m1_activity += [run_gpt_prompt_generate_hourly_schedule(
-                          persona, curr_hour_str, n_m1_activity, hour_str)[0]]
+          result = run_gpt_prompt_generate_hourly_schedule(
+                          persona, curr_hour_str, n_m1_activity, hour_str)
+          n_m1_activity += [result[0] if result is not None else "sleeping"]
   
   # Step 1. Compressing the hourly schedule to the following format: 
   # The integer indicates the number of hours. They should add up to 24. 
@@ -161,7 +164,8 @@ def generate_task_decomp(persona, task, duration):
 
   """
   if debug: print ("GNS FUNCTION: <generate_task_decomp>")
-  return run_gpt_prompt_task_decomp(persona, task, duration)[0]
+  result = run_gpt_prompt_task_decomp(persona, task, duration)
+  return result[0] if result is not None else [[task, duration]]
 
 
 def generate_action_sector(act_desp, persona, maze): 
@@ -179,7 +183,8 @@ def generate_action_sector(act_desp, persona, maze):
     "bedroom 2"
   """
   if debug: print ("GNS FUNCTION: <generate_action_sector>")
-  return run_gpt_prompt_action_sector(act_desp, persona, maze)[0]
+  result = run_gpt_prompt_action_sector(act_desp, persona, maze)
+  return result[0] if result is not None else persona.scratch.living_area.split(":")[0]
 
 
 def generate_action_arena(act_desp, persona, maze, act_world, act_sector): 
@@ -197,7 +202,8 @@ def generate_action_arena(act_desp, persona, maze, act_world, act_sector):
     "bedroom 2"
   """
   if debug: print ("GNS FUNCTION: <generate_action_arena>")
-  return run_gpt_prompt_action_arena(act_desp, persona, maze, act_world, act_sector)[0]
+  result = run_gpt_prompt_action_arena(act_desp, persona, maze, act_world, act_sector)
+  return result[0] if result is not None else act_sector
 
 
 def generate_action_game_object(act_desp, act_address, persona, maze):
@@ -220,7 +226,8 @@ def generate_action_game_object(act_desp, act_address, persona, maze):
   if debug: print ("GNS FUNCTION: <generate_action_game_object>")
   if not persona.s_mem.get_str_accessible_arena_game_objects(act_address): 
     return "<random>"
-  return run_gpt_prompt_action_game_object(act_desp, persona, maze, act_address)[0]
+  result = run_gpt_prompt_action_game_object(act_desp, persona, maze, act_address)
+  return result[0] if result is not None else "<random>"
 
 
 def generate_action_pronunciatio(act_desp, persona): 
@@ -261,17 +268,20 @@ def generate_action_event_triple(act_desp, persona):
     "🧈🍞"
   """
   if debug: print ("GNS FUNCTION: <generate_action_event_triple>")
-  return run_gpt_prompt_event_triple(act_desp, persona)[0]
+  result = run_gpt_prompt_event_triple(act_desp, persona)
+  return result[0] if result is not None else (persona.name, "is", act_desp)
 
 
-def generate_act_obj_desc(act_game_object, act_desp, persona): 
+def generate_act_obj_desc(act_game_object, act_desp, persona):
   if debug: print ("GNS FUNCTION: <generate_act_obj_desc>")
-  return run_gpt_prompt_act_obj_desc(act_game_object, act_desp, persona)[0]
+  result = run_gpt_prompt_act_obj_desc(act_game_object, act_desp, persona)
+  return result[0] if result is not None else "in use"
 
 
-def generate_act_obj_event_triple(act_game_object, act_obj_desc, persona): 
+def generate_act_obj_event_triple(act_game_object, act_obj_desc, persona):
   if debug: print ("GNS FUNCTION: <generate_act_obj_event_triple>")
-  return run_gpt_prompt_act_obj_event_triple(act_game_object, act_obj_desc, persona)[0]
+  result = run_gpt_prompt_act_obj_event_triple(act_game_object, act_obj_desc, persona)
+  return result[0] if result is not None else (act_game_object, "is", act_obj_desc)
 
 
 def generate_convo(maze, init_persona, target_persona): 
@@ -293,24 +303,23 @@ def generate_convo(maze, init_persona, target_persona):
   return convo, convo_length
 
 
-def generate_convo_summary(persona, convo): 
-  convo_summary = run_gpt_prompt_summarize_conversation(persona, convo)[0]
-  return convo_summary
+def generate_convo_summary(persona, convo):
+  result = run_gpt_prompt_summarize_conversation(persona, convo)
+  return result[0] if result is not None else ""
 
 
-def generate_decide_to_talk(init_persona, target_persona, retrieved): 
-  x =run_gpt_prompt_decide_to_talk(init_persona, target_persona, retrieved)[0]
+def generate_decide_to_talk(init_persona, target_persona, retrieved):
+  result = run_gpt_prompt_decide_to_talk(init_persona, target_persona, retrieved)
   if debug: print ("GNS FUNCTION: <generate_decide_to_talk>")
-
-  if x == "yes": 
-    return True
-  else: 
+  if result is None:
     return False
+  return result[0] == "yes"
 
 
-def generate_decide_to_react(init_persona, target_persona, retrieved): 
+def generate_decide_to_react(init_persona, target_persona, retrieved):
   if debug: print ("GNS FUNCTION: <generate_decide_to_react>")
-  return run_gpt_prompt_decide_to_react(init_persona, target_persona, retrieved)[0]
+  result = run_gpt_prompt_decide_to_react(init_persona, target_persona, retrieved)
+  return result[0] if result is not None else False
 
 
 def generate_new_decomp_schedule(persona, inserted_act, inserted_act_dur,  start_hour, end_hour): 
