@@ -32,7 +32,8 @@ def generate_focal_points(persona, n=3):
   for node in nodes[-1*persona.scratch.importance_ele_n:]: 
     statements += node.embedding_key + "\n"
 
-  return run_gpt_prompt_focal_pt(persona, statements, n)[0]
+  result = run_gpt_prompt_focal_pt(persona, statements, n)
+  return result[0] if result is not None else []
 
 
 def generate_insights_and_evidence(persona, nodes, n=5): 
@@ -42,7 +43,8 @@ def generate_insights_and_evidence(persona, nodes, n=5):
   for count, node in enumerate(nodes): 
     statements += f'{str(count)}. {node.embedding_key}\n'
 
-  ret = run_gpt_prompt_insight_and_guidance(persona, statements, n)[0]
+  result = run_gpt_prompt_insight_and_guidance(persona, statements, n)
+  ret = result[0] if result is not None else None
 
   print (ret)
   try: 
@@ -67,7 +69,8 @@ def generate_action_event_triple(act_desp, persona):
     "🧈🍞"
   """
   if debug: print ("GNS FUNCTION: <generate_action_event_triple>")
-  return run_gpt_prompt_event_triple(act_desp, persona)[0]
+  result = run_gpt_prompt_event_triple(act_desp, persona)
+  return result[0] if result is not None else (persona.name, "is", act_desp)
 
 
 def generate_poig_score(persona, event_type, description): 
@@ -76,22 +79,25 @@ def generate_poig_score(persona, event_type, description):
   if "is idle" in description: 
     return 1
 
-  if event_type == "event" or event_type == "thought": 
-    return run_gpt_prompt_event_poignancy(persona, description)[0]
-  elif event_type == "chat": 
-    return run_gpt_prompt_chat_poignancy(persona, 
-                           persona.scratch.act_description)[0]
+  if event_type == "event" or event_type == "thought":
+    result = run_gpt_prompt_event_poignancy(persona, description)
+    return result[0] if result is not None else 1
+  elif event_type == "chat":
+    result = run_gpt_prompt_chat_poignancy(persona, persona.scratch.act_description)
+    return result[0] if result is not None else 1
 
 
 
 def generate_planning_thought_on_convo(persona, all_utt):
   if debug: print ("GNS FUNCTION: <generate_planning_thought_on_convo>")
-  return run_gpt_prompt_planning_thought_on_convo(persona, all_utt)[0]
+  result = run_gpt_prompt_planning_thought_on_convo(persona, all_utt)
+  return result[0] if result is not None else ""
 
 
 def generate_memo_on_convo(persona, all_utt):
   if debug: print ("GNS FUNCTION: <generate_memo_on_convo>")
-  return run_gpt_prompt_memo_on_convo(persona, all_utt)[0]
+  result = run_gpt_prompt_memo_on_convo(persona, all_utt)
+  return result[0] if result is not None else ""
 
 
 
