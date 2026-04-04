@@ -6,78 +6,121 @@ Description: Wrapper functions for calling OpenAI APIs.
 """
 import json
 import random
-import openai
 import time
+import os
 
 from openai import OpenAI
 from utils import *
 
-openai.api_key = openai_api_key
-_embedding_client = OpenAI(api_key=openai_api_key)
-_completion_client = OpenAI(api_key=openai_api_key)
+_CHAT_MODEL = "gpt-4o-mini"
+_EMBEDDING_MODEL = "text-embedding-ada-002"
+
+_embedding_client = OpenAI(api_key=openai_api_key, timeout=30.0)
+_completion_client = OpenAI(api_key=openai_api_key, timeout=30.0)
+
+# ---------------------------------------------------------------------------
+# Token usage tracker
+# All LLM calls go through this module, so we track everything here.
+# Call get_token_summary() at any point to see cumulative usage.
+# ---------------------------------------------------------------------------
+_token_log = []  # list of dicts, one per API call
+
+def _record_usage(call_type, prompt_tokens, completion_tokens, caller=None):
+  _token_log.append({
+    "call_type": call_type,
+    "prompt_tokens": prompt_tokens,
+    "completion_tokens": completion_tokens,
+    "total_tokens": prompt_tokens + completion_tokens,
+    "caller": caller,
+    "timestamp": time.time(),
+  })
+
+def get_token_summary():
+  total_prompt = sum(e["prompt_tokens"] for e in _token_log)
+  total_completion = sum(e["completion_tokens"] for e in _token_log)
+  total = total_prompt + total_completion
+  n_calls = len(_token_log)
+  # gpt-4o-mini pricing (as of 2024): $0.15/1M input, $0.60/1M output
+  cost_usd = (total_prompt * 0.15 + total_completion * 0.60) / 1_000_000
+  print(f"[TOKEN USAGE] calls={n_calls} | prompt={total_prompt:,} | "
+        f"completion={total_completion:,} | total={total:,} | "
+        f"est. cost=${cost_usd:.4f}")
+  return {"calls": n_calls, "prompt_tokens": total_prompt,
+          "completion_tokens": total_completion, "total_tokens": total,
+          "estimated_cost_usd": cost_usd}
+
+def save_token_log(filepath):
+  """Save full per-call token log to a JSON file for evaluation analysis."""
+  os.makedirs(os.path.dirname(filepath), exist_ok=True)
+  with open(filepath, "w") as f:
+    json.dump({"summary": get_token_summary(), "calls": _token_log}, f, indent=2)
+  print(f"[TOKEN USAGE] Log saved to {filepath}")
 
 def temp_sleep(seconds=0.1):
   time.sleep(seconds)
 
-def ChatGPT_single_request(prompt): 
+def ChatGPT_single_request(prompt):
   temp_sleep()
-
-  completion = openai.ChatCompletion.create(
-    model="gpt-3.5-turbo", 
-    messages=[{"role": "user", "content": prompt}]
-  )
-  return completion["choices"][0]["message"]["content"]
+  for attempt in range(3):
+    try:
+      completion = _completion_client.chat.completions.create(
+        model=_CHAT_MODEL,
+        messages=[{"role": "user", "content": prompt}]
+      )
+      return completion.choices[0].message.content
+    except Exception as e:
+      print(f"ChatGPT_single_request ERROR (attempt {attempt+1}/3): {e}")
+      if attempt < 2:
+        time.sleep(2 ** attempt)
+  return ""
 
 
 # ============================================================================
 # #####################[SECTION 1: CHATGPT-3 STRUCTURE] ######################
 # ============================================================================
 
-def GPT4_request(prompt): 
+def GPT4_request(prompt):
   """
   Given a prompt and a dictionary of GPT parameters, make a request to OpenAI
-  server and returns the response. 
+  server and returns the response.
   ARGS:
     prompt: a str prompt
-    gpt_parameter: a python dictionary with the keys indicating the names of  
-                   the parameter and the values indicating the parameter 
-                   values.   
-  RETURNS: 
-    a str of GPT-3's response. 
+    gpt_parameter: a python dictionary with the keys indicating the names of
+                   the parameter and the values indicating the parameter
+                   values.
+  RETURNS:
+    a str of GPT-3's response.
   """
   temp_sleep()
 
   try:
-    response = _embedding_client.chat.completions.create(
-        model="gpt-4",
+    response = _completion_client.chat.completions.create(
+        model=_CHAT_MODEL,
         messages=[{"role": "user", "content": prompt}]
     )
+    _record_usage("GPT4_request", response.usage.prompt_tokens,
+                  response.usage.completion_tokens)
     return response.choices[0].message.content
-  
+
   except Exception as e:
     print("ChatGPT ERROR:", getattr(e, "message", str(e)))
     return "ChatGPT ERROR"
 
 
-def ChatGPT_request(prompt): 
+def ChatGPT_request(prompt):
   """
-  Given a prompt and a dictionary of GPT parameters, make a request to OpenAI
-  server and returns the response. 
-  ARGS:
-    prompt: a str prompt
-    gpt_parameter: a python dictionary with the keys indicating the names of  
-                   the parameter and the values indicating the parameter 
-                   values.   
-  RETURNS: 
-    a str of GPT-3's response. 
+  Given a prompt and a dictionary of GPT parameters, make a request to the
+  xAI server and returns the response.
   """
   try:
-    response = _embedding_client.chat.completions.create(
-        model="gpt-3.5-turbo",
+    response = _completion_client.chat.completions.create(
+        model=_CHAT_MODEL,
         messages=[{"role": "user", "content": prompt}]
     )
+    _record_usage("ChatGPT_request", response.usage.prompt_tokens,
+                  response.usage.completion_tokens)
     return response.choices[0].message.content
-  
+
   except Exception as e:
     print("ChatGPT ERROR:", getattr(e, "message", str(e)))
     return "ChatGPT ERROR"
@@ -210,25 +253,18 @@ def GPT_request(prompt, gpt_parameter):
   """
   temp_sleep()
   try:
-    # Map deprecated completion models to current equivalent
-    engine = gpt_parameter["engine"]
-    if engine in ("text-davinci-003", "text-davinci-002"):
-      engine = "gpt-3.5-turbo-instruct"
-    # OpenAI Python >= 1.0: use client.completions.create (model=, not engine=)
-    kwargs = dict(
-        model=engine,
-        prompt=prompt,
+    response = _completion_client.chat.completions.create(
+        model=_CHAT_MODEL,
+        messages=[{"role": "user", "content": prompt}],
         temperature=gpt_parameter["temperature"],
         max_tokens=gpt_parameter["max_tokens"],
         top_p=gpt_parameter["top_p"],
         frequency_penalty=gpt_parameter["frequency_penalty"],
         presence_penalty=gpt_parameter["presence_penalty"],
-        stream=gpt_parameter["stream"],
     )
-    if gpt_parameter.get("stop") is not None:
-      kwargs["stop"] = gpt_parameter["stop"]
-    response = _completion_client.completions.create(**kwargs)
-    return response.choices[0].text
+    _record_usage("GPT_request", response.usage.prompt_tokens,
+                  response.usage.completion_tokens)
+    return response.choices[0].message.content
   except Exception as e:
     err_msg = str(getattr(e, "message", str(e)))
     print(f"GPT_request error: {type(e).__name__}: {err_msg}")
@@ -284,12 +320,19 @@ def safe_generate_response(prompt,
   return fail_safe_response
 
 
-def get_embedding(text, model="text-embedding-ada-002"):
+def get_embedding(text, model=_EMBEDDING_MODEL):
   text = text.replace("\n", " ")
   if not text:
     text = "this is blank"
-  response = _embedding_client.embeddings.create(input=[text], model=model)
-  return response.data[0].embedding
+  for attempt in range(3):
+    try:
+      response = _embedding_client.embeddings.create(input=[text], model=model)
+      return response.data[0].embedding
+    except Exception as e:
+      print(f"get_embedding ERROR (attempt {attempt+1}/3): {e}")
+      if attempt < 2:
+        time.sleep(2 ** attempt)
+  return [0] * 1536  # fallback: zero vector (ada-002 dimension)
 
 
 if __name__ == '__main__':
