@@ -2,5 +2,23 @@
 {% load staticfiles %}
 
 {% block content %}
-Please start the backend first.
+<div style="text-align: center; padding: 50px; background-color: #f8f9fa; min-height: 100vh;">
+  <h1 style="color: #dc3545; margin-bottom: 20px;">⚠️ Backend Server Not Running</h1>
+  <p style="font-size: 1.2em; margin-bottom: 30px;">
+    Please start the backend server first.
+  </p>
+  <div style="background-color: white; padding: 20px; border-radius: 5px; max-width: 600px; margin: 0 auto; text-align: left;">
+    <h3>To start the backend:</h3>
+    <ol>
+      <li>Open a terminal</li>
+      <li>Navigate to: <code>reverie/backend_server/</code></li>
+      <li>Run: <code>python reverie.py</code></li>
+      <li>Enter your simulation details when prompted</li>
+      <li>Type <code>run [number]</code> to start the simulation</li>
+    </ol>
+    <p style="margin-top: 20px;">
+      <strong>Then refresh this page.</strong>
+    </p>
+  </div>
+</div>
 {% endblock content %}
