@@ -30,6 +30,8 @@ import math
 import os
 import shutil
 import traceback
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from selenium import webdriver
 
@@ -382,19 +384,44 @@ class ReverieServer:
           # This is where the core brains of the personas are invoked. 
           movements = {"persona": dict(),
                        "meta": dict()}
-          for persona_name, persona in self.personas.items():
-            print(f"[MOVE] step={self.step} persona={persona_name}", flush=True)
-            next_tile, pronunciatio, description = persona.move(
-              self.maze, self.personas, self.personas_tile[persona_name],
-              self.curr_time)
-            movements["persona"][persona_name] = {}
-            movements["persona"][persona_name]["movement"] = next_tile
-            movements["persona"][persona_name]["pronunciatio"] = pronunciatio
-            movements["persona"][persona_name]["description"] = description
-            movements["persona"][persona_name]["act_description"] = (persona
-                                                          .scratch.act_description)
-            movements["persona"][persona_name]["chat"] = (persona
-                                                          .scratch.chat)
+
+          chatting = {name for name, p in self.personas.items()
+                      if p.scratch.chatting_with}
+          solo   = [(name, p) for name, p in self.personas.items()
+                    if name not in chatting]
+          convos = [(name, p) for name, p in self.personas.items()
+                    if name in chatting]
+
+          def _do_move(item):
+            pname, p = item
+            print(f"[MOVE] step={self.step} persona={pname}", flush=True)
+            try:
+              nt, pr, desc = p.move(
+                self.maze, self.personas, self.personas_tile[pname],
+                self.curr_time)
+              return pname, nt, pr, desc, p.scratch.act_description, p.scratch.chat
+            except Exception as exc:
+              print(f"[MOVE ERROR] {pname}: {exc}", flush=True)
+              traceback.print_exc()
+              return (pname, self.personas_tile[pname],
+                      p.scratch.act_pronunciatio or "💤",
+                      f"{p.scratch.act_description} @ {p.scratch.act_address}",
+                      p.scratch.act_description, p.scratch.chat)
+
+          results = []
+          with ThreadPoolExecutor(max_workers=8) as pool:
+            results += list(pool.map(_do_move, solo))
+          for item in convos:
+            results.append(_do_move(item))
+
+          for pname, nt, pr, desc, act_desc, chat in results:
+            movements["persona"][pname] = {
+              "movement": nt,
+              "pronunciatio": pr,
+              "description": desc,
+              "act_description": act_desc,
+              "chat": chat,
+            }
 
           # Include the meta information about the current stage in the 
           # movements dictionary. 
@@ -453,11 +480,15 @@ class ReverieServer:
         outfile.write(json.dumps({"sim_code": self.sim_code}, indent=2))
       with open(f"{fs_temp_storage}/curr_step.json", "w") as outfile:
         outfile.write(json.dumps({"step": self.step}, indent=2))
-      sim_command = input("Enter option: ")
+      try:
+        sim_command = input("Enter option: ")
+      except KeyboardInterrupt:
+        print("\n[Ctrl+C at prompt] Type 'fin' to save, or 'exit' to quit without saving.")
+        continue
       sim_command = sim_command.strip()
       ret_str = ""
 
-      try: 
+      try:
         if sim_command.lower() in ["f", "fin", "finish", "save and finish"]:
           # Finishes the simulation environment and saves the progress.
           # Example: fin
@@ -489,7 +520,10 @@ class ReverieServer:
           # Runs the number of steps specified in the prompt.
           # Example: run 1000
           int_count = int(sim_command.split()[-1])
-          rs.start_server(int_count)
+          try:
+            rs.start_server(int_count)
+          except KeyboardInterrupt:
+            print("\n[Interrupted] Returning to prompt. Type 'fin' to save.")
           get_token_summary()
           save_token_log(f"{fs_storage}/{rs.sim_code}/token_log.json")
 

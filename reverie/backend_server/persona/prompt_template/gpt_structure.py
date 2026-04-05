@@ -13,10 +13,12 @@ from openai import OpenAI
 from utils import *
 
 _CHAT_MODEL = "gpt-4o-mini"
+_INSTRUCT_MODEL = "gpt-3.5-turbo-instruct"  # legacy completions endpoint — supports stop sequences
 _EMBEDDING_MODEL = "text-embedding-ada-002"
 
 _embedding_client = OpenAI(api_key=openai_api_key, timeout=30.0)
 _completion_client = OpenAI(api_key=openai_api_key, timeout=30.0)
+_instruct_client = OpenAI(api_key=openai_api_key, timeout=30.0)
 
 # ---------------------------------------------------------------------------
 # Token usage tracker
@@ -112,18 +114,28 @@ def ChatGPT_request(prompt):
   Given a prompt and a dictionary of GPT parameters, make a request to the
   xAI server and returns the response.
   """
-  try:
-    response = _completion_client.chat.completions.create(
-        model=_CHAT_MODEL,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    _record_usage("ChatGPT_request", response.usage.prompt_tokens,
-                  response.usage.completion_tokens)
-    return response.choices[0].message.content
+  import re as _re
+  for attempt in range(5):
+    try:
+      response = _completion_client.chat.completions.create(
+          model=_CHAT_MODEL,
+          messages=[{"role": "user", "content": prompt}]
+      )
+      _record_usage("ChatGPT_request", response.usage.prompt_tokens,
+                    response.usage.completion_tokens)
+      return response.choices[0].message.content
 
-  except Exception as e:
-    print("ChatGPT ERROR:", getattr(e, "message", str(e)))
-    return "ChatGPT ERROR"
+    except Exception as e:
+      err_msg = str(getattr(e, "message", str(e)))
+      print(f"ChatGPT ERROR (attempt {attempt+1}/5):", err_msg)
+      if attempt < 4:
+        wait = 2.0
+        m = _re.search(r'try again in (\d+)ms', err_msg)
+        if m:
+          wait = int(m.group(1)) / 1000.0 + 0.1
+        wait += random.uniform(0, 1.0)
+        time.sleep(wait)
+  return "ChatGPT ERROR"
 
 
 def GPT4_safe_generate_response(prompt, 
@@ -252,23 +264,37 @@ def GPT_request(prompt, gpt_parameter):
     a str of GPT-3's response. 
   """
   temp_sleep()
-  try:
-    response = _completion_client.chat.completions.create(
-        model=_CHAT_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=gpt_parameter["temperature"],
-        max_tokens=gpt_parameter["max_tokens"],
-        top_p=gpt_parameter["top_p"],
-        frequency_penalty=gpt_parameter["frequency_penalty"],
-        presence_penalty=gpt_parameter["presence_penalty"],
-    )
-    _record_usage("GPT_request", response.usage.prompt_tokens,
-                  response.usage.completion_tokens)
-    return response.choices[0].message.content
-  except Exception as e:
-    err_msg = str(getattr(e, "message", str(e)))
-    print(f"GPT_request error: {type(e).__name__}: {err_msg}")
-    return "TOKEN LIMIT EXCEEDED"
+  for attempt in range(6):
+    try:
+      # Use the legacy completions endpoint so stop sequences are honoured.
+      # gpt-3.5-turbo-instruct is the current replacement for text-davinci-003.
+      response = _instruct_client.completions.create(
+          model=_INSTRUCT_MODEL,
+          prompt=prompt,
+          temperature=gpt_parameter["temperature"],
+          max_tokens=gpt_parameter["max_tokens"],
+          top_p=gpt_parameter["top_p"],
+          frequency_penalty=gpt_parameter["frequency_penalty"],
+          presence_penalty=gpt_parameter["presence_penalty"],
+          stop=gpt_parameter.get("stop"),
+      )
+      _record_usage("GPT_request", response.usage.prompt_tokens,
+                    response.usage.completion_tokens)
+      return response.choices[0].text
+    except Exception as e:
+      err_msg = str(getattr(e, "message", str(e)))
+      print(f"GPT_request error (attempt {attempt+1}/6): {type(e).__name__}: {err_msg}")
+      if attempt < 5:
+        # Parse retry-after from error message if present (e.g. "try again in 711ms")
+        wait = 2.0
+        import re as _re
+        m = _re.search(r'try again in (\d+)ms', err_msg)
+        if m:
+          wait = int(m.group(1)) / 1000.0 + 0.1
+        # Add random jitter to desynchronize parallel threads
+        wait += random.uniform(0, 1.0)
+        time.sleep(wait)
+  return ""  # empty string — callers use fail_safe, never store this in schedules
 
 
 def generate_prompt(curr_input, prompt_lib_file): 

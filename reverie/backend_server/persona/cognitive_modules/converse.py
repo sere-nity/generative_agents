@@ -50,10 +50,12 @@ def generate_summarize_agent_relationship(init_persona,
   for i in all_embedding_keys: 
     all_embedding_key_str += f"{i}\n"
 
-  summarized_relationship = run_gpt_prompt_agent_chat_summarize_relationship(
+  result = run_gpt_prompt_agent_chat_summarize_relationship(
                               init_persona, target_persona,
-                              all_embedding_key_str)[0]
-  return summarized_relationship
+                              all_embedding_key_str)
+  if result is None:
+    return f"{init_persona.name} and {target_persona.name} are acquaintances."
+  return result[0]
 
 
 def generate_agent_chat(maze, 
